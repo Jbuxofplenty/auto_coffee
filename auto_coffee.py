@@ -1,12 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-import RPi.GPIO as GPIO
-import signal
+# import RPi.GPIO as GPIO
 import threading
 import time
+import json
 
-hostName = "192.168.0.90"
+hostName = "0.0.0.0"
 serverPort = 8080
 
 # Used to shut down threads if another request is sent
@@ -18,17 +18,27 @@ class MyServer(BaseHTTPRequestHandler):
 		self.IN_SOLENOID_VALVE = 19
 		self.OUT_SOLENOID_VALVE = 20
 		self.LINEAR_ACTUATOR = 21
+		self.config = self.LoadConfig()
 		super().__init__(*args, **kwargs)
 
 	def do_GET(self):
 		if self.path == "/coffee" or self.path == "/Coffee":
 			exit_event.clear()
 			self.SendWebpage(f'Making some coffee homeboy.')
-			self.MakeCoffeeOrTea(8, 102, 375)
+			in_flow = self.config["coffee"]["in_flow_time"]
+			out_flow = self.config["coffee"]["out_flow_time"]
+			time_to_boil = self.config["coffee"]["time_to_boil"]
+			self.SendWebpage(f'In flow: {in_flow}, Out flow: {out_flow}, Time to Boil: {time_to_boil}', False)
+			self.MakeCoffeeOrTea(in_flow, out_flow, time_to_boil)
+			self.SendWebpage(f'Finished.', False)
 		elif self.path == "/tea" or self.path == "/Tea":
 			exit_event.clear()
 			self.SendWebpage(f'Making some tea homeboy.')
-			self.MakeCoffeeOrTea(4.5, 42, 275)
+			in_flow = self.config["tea"]["in_flow_time"]
+			out_flow = self.config["tea"]["out_flow_time"]
+			time_to_boil = self.config["tea"]["time_to_boil"]
+			self.SendWebpage(f'In flow: {in_flow}, Out flow: {out_flow}, Time to Boil: {time_to_boil}', False)
+			self.MakeCoffeeOrTea(in_flow, out_flow, time_to_boil)
 			self.SendWebpage(f'Finished.', False)
 		elif self.path == "/favicon.ico":
 			return
@@ -37,6 +47,70 @@ class MyServer(BaseHTTPRequestHandler):
 			self.SendWebpage(f'Restarting server...', False)
 			self.Reset()
 			exit_event.set()
+
+	def do_POST(self):
+		content_length = int(self.headers['Content-Length'])
+		body = self.rfile.read(content_length)
+		json_body = json.loads(body.decode('utf-8'))
+		if self.path == "/in":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.OpenInput(control_time)
+			self.SendWebpage(f'Will open the input solenoid valve for {control_time} seconds.')
+		elif self.path == "/out":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.OpenOutput(control_time)
+			self.SendWebpage(f'Will open the output solenoid valve for {control_time} seconds.')
+		elif self.path == "/set/coffee/in_flow":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["coffee"]["in_flow_time"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved coffee inflow time to {control_time} seconds.')
+		elif self.path == "/set/coffee/out_flow":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["coffee"]["out_flow_time"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved coffee out flow time to {control_time} seconds.')
+		elif self.path == "/set/coffee/time_to_boil":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["coffee"]["time_to_boil"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved coffee time to boil to {control_time} seconds.')
+		elif self.path == "/set/tea/in_flow":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["tea"]["in_flow_time"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved tea inflow time to {control_time} seconds.')
+		elif self.path == "/set/tea/out_flow":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["tea"]["out_flow_time"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved tea out flow time to {control_time} seconds.')
+		elif self.path == "/set/tea/time_to_boil":
+			exit_event.clear()
+			control_time = float(json_body['time'])
+			self.config["tea"]["time_to_boil"] = control_time
+			self.SaveConfig()
+			self.SendWebpage(f'Saved tea time to boil to {control_time} seconds.')
+		else:
+			self.SendWebpage(f'Did not recognize the request. Append /in or /out to the path immediately after the address/port specification.')
+			self.SendWebpage(f'Restarting server...', False)
+			self.Reset()
+			exit_event.set()
+
+	def LoadConfig(self):
+		with open("config.json") as json_file:
+			return json.load(json_file)
+
+	def SaveConfig(self):
+		with open("config.json", "w") as write_file:
+			json.dump(self.config, write_file)
 
 	def SendWebpage(self, message, header=True):
 		# Send webpage to user to let them know we're working on it
@@ -49,6 +123,40 @@ class MyServer(BaseHTTPRequestHandler):
 		self.wfile.write(bytes(f"<p>{message}</p>", "utf-8"))
 		self.wfile.write(bytes("</body></html>", "utf-8"))
 		print(message)
+				
+	def OpenInput(self, in_flow_time):
+		# Setup the GPIO pins
+		self.SetupGPIO()
+		self.SendWebpage('Filling the hot water heater...', False)
+		
+		# Open the solenoid valve
+		GPIO.output(self.IN_SOLENOID_VALVE, GPIO.HIGH)
+		self.ThreadSleep(in_flow_time)
+		
+		# Reset sensors
+		GPIO.output(self.IN_SOLENOID_VALVE, GPIO.LOW)
+
+		# Reset
+		self.Reset()
+		# Notify the user their liquid is ready
+		self.SendWebpage(f'Finished.', False)
+				
+	def OpenOutput(self, out_flow_time):
+		# Setup the GPIO pins
+		self.SetupGPIO()
+		self.SendWebpage('Pouring the hot water...', False)
+		
+		# Open the solenoid valve
+		GPIO.output(self.OUT_SOLENOID_VALVE, GPIO.HIGH)
+		self.ThreadSleep(out_flow_time)
+		
+		# Reset sensors
+		GPIO.output(self.OUT_SOLENOID_VALVE, GPIO.LOW)
+
+		# Reset
+		self.Reset()
+		# Notify the user their liquid is ready
+		self.SendWebpage(f'Finished.', False)
 
 	# Callback to update the global count variable when signals
 	# are sent to the GPIO pin via the flow meter
@@ -166,7 +274,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 if __name__ == "__main__":
 	# Necessary due to the correct handling of interrupt signals
-	GPIO.setwarnings(False)
+	# GPIO.setwarnings(False)
 
 	webServer = ThreadedHTTPServer((hostName, serverPort), MyServer)
 	while True:
