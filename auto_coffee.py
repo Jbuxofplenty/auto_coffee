@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-# import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO
 import threading
 import time
 import json
@@ -62,43 +62,28 @@ class MyServer(BaseHTTPRequestHandler):
 			control_time = float(json_body['time'])
 			self.OpenOutput(control_time)
 			self.SendWebpage(f'Will open the output solenoid valve for {control_time} seconds.')
-		elif self.path == "/set/coffee/in_flow":
+		elif self.path == "/set/coffee":
 			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["coffee"]["in_flow_time"] = control_time
+			in_flow_time = float(json_body['in_flow'])
+			out_flow_time = float(json_body['out_flow'])
+			time_to_boil = float(json_body['time_to_boil'])
+			self.config["coffee"]["in_flow_time"] = in_flow_time
+			self.config["coffee"]["out_flow_time"] = out_flow_time
+			self.config["coffee"]["time_to_boil"] = time_to_boil
 			self.SaveConfig()
-			self.SendWebpage(f'Saved coffee inflow time to {control_time} seconds.')
-		elif self.path == "/set/coffee/out_flow":
+			self.SendWebpage(f'Saved coffee settings to the following configuration \n In flow: {in_flow_time}, Out flow: {out_flow_time}, Time to Boil: {time_to_boil}')
+		elif self.path == "/set/tea":
 			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["coffee"]["out_flow_time"] = control_time
+			in_flow_time = float(json_body['in_flow'])
+			out_flow_time = float(json_body['out_flow'])
+			time_to_boil = float(json_body['time_to_boil'])
+			self.config["tea"]["in_flow_time"] = in_flow_time
+			self.config["tea"]["out_flow_time"] = out_flow_time
+			self.config["tea"]["time_to_boil"] = time_to_boil
 			self.SaveConfig()
-			self.SendWebpage(f'Saved coffee out flow time to {control_time} seconds.')
-		elif self.path == "/set/coffee/time_to_boil":
-			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["coffee"]["time_to_boil"] = control_time
-			self.SaveConfig()
-			self.SendWebpage(f'Saved coffee time to boil to {control_time} seconds.')
-		elif self.path == "/set/tea/in_flow":
-			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["tea"]["in_flow_time"] = control_time
-			self.SaveConfig()
-			self.SendWebpage(f'Saved tea inflow time to {control_time} seconds.')
-		elif self.path == "/set/tea/out_flow":
-			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["tea"]["out_flow_time"] = control_time
-			self.SaveConfig()
-			self.SendWebpage(f'Saved tea out flow time to {control_time} seconds.')
-		elif self.path == "/set/tea/time_to_boil":
-			exit_event.clear()
-			control_time = float(json_body['time'])
-			self.config["tea"]["time_to_boil"] = control_time
-			self.SaveConfig()
-			self.SendWebpage(f'Saved tea time to boil to {control_time} seconds.')
+			self.SendWebpage(f'Saved tea settings to the following configuration \n In flow: {in_flow_time}, Out flow: {out_flow_time}, Time to Boil: {time_to_boil}')
 		else:
+			print(self.path)
 			self.SendWebpage(f'Did not recognize the request. Append /in or /out to the path immediately after the address/port specification.')
 			self.SendWebpage(f'Restarting server...', False)
 			self.Reset()
